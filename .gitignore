@@ -45,3 +45,6 @@ env/
 *.log 
 api_calls.json
 logged_in_page.png
+
+# New line
+langraph-email-agent/credentials.json
