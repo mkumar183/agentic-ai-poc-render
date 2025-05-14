@@ -11,9 +11,13 @@ import pickle
 import base64
 import json
 from datetime import datetime
+from fastapi import FastAPI, HTTPException
+import uvicorn
 
 # Gmail API scopes
 SCOPES = ['https://www.googleapis.com/auth/gmail.modify']
+
+app = FastAPI()
 
 class EmailProcessor:
     def __init__(self):
@@ -33,16 +37,23 @@ class EmailProcessor:
             else:
                 flow = InstalledAppFlow.from_client_secrets_file(
                     'credentials.json', SCOPES)
-                creds = flow.run_local_server(port=0)
+                creds = flow.run_local_server(port=61495)
             with open('token.pickle', 'wb') as token:
                 pickle.dump(creds, token)
 
         return build('gmail', 'v1', credentials=creds)
 
+    def get_labels(self):
+        """Get all Gmail labels."""
+        results = self.service.users().labels().list(userId='me').execute()
+        labels = results.get('labels', [])
+        return {label['name']: label['id'] for label in labels}
+
     def fetch_emails(self, max_results: int = 10) -> List[Dict]:
-        """Fetch recent emails from Gmail."""
+        """Fetch recent emails from Gmail INBOX only."""
         results = self.service.users().messages().list(
-            userId='me', 
+            userId='me',
+            labelIds=['INBOX'],  # Only fetch emails from INBOX
             maxResults=max_results
         ).execute()
         messages = results.get('messages', [])
@@ -58,14 +69,15 @@ class EmailProcessor:
             subject = next((h['value'] for h in headers if h['name'] == 'Subject'), 'No Subject')
             sender = next((h['value'] for h in headers if h['name'] == 'From'), 'Unknown Sender')
             
-            # Get email body
-            if 'parts' in msg['payload']:
-                body = msg['payload']['parts'][0]['body'].get('data', '')
-            else:
-                body = msg['payload']['body'].get('data', '')
+            # # Get email body
+            # if 'parts' in msg['payload']:
+            #     body = msg['payload']['parts'][0]['body'].get('data', '')
+            # else:
+            #     body = msg['payload']['body'].get('data', '')
             
-            if body:
-                body = base64.urlsafe_b64decode(body).decode()
+            # if body:
+            #     body = base64.urlsafe_b64decode(body).decode()
+            body = 'test'
             
             email_data.append({
                 'id': message['id'],
@@ -94,10 +106,18 @@ class EmailProcessor:
     def move_to_spam(self, email_id: str) -> bool:
         """Move an email to spam folder."""
         try:
+            # Get all labels
+            labels = self.get_labels()
+            spam_label_id = labels.get('spam-ai-bot')
+            
+            if not spam_label_id:
+                print("Custom label 'spam-ai-bot' not found. Available labels:", list(labels.keys()))
+                return False
+
             self.service.users().messages().modify(
                 userId='me',
                 id=email_id,
-                body={'addLabelIds': ['SPAM'], 'removeLabelIds': ['INBOX']}
+                body={'addLabelIds': [spam_label_id], 'removeLabelIds': ['INBOX']}
             ).execute()
             return True
         except Exception as e:
@@ -109,6 +129,7 @@ class EmailProcessor:
         print("Fetching emails...")
         emails = self.fetch_emails()
         
+        results = []
         for email in emails:
             print(f"\nProcessing email: {email['subject']}")
             classification = self.classify_email(email)
@@ -118,14 +139,40 @@ class EmailProcessor:
                 success = self.move_to_spam(email['id'])
                 if success:
                     print("Successfully moved to spam")
+                    results.append({
+                        'subject': email['subject'],
+                        'status': 'moved_to_spam',
+                        'success': True
+                    })
                 else:
                     print("Failed to move to spam")
+                    results.append({
+                        'subject': email['subject'],
+                        'status': 'failed_to_move',
+                        'success': False
+                    })
             else:
                 print(f"Keeping in inbox: {email['subject']}")
+                results.append({
+                    'subject': email['subject'],
+                    'status': 'kept_in_inbox',
+                    'success': True
+                })
+        
+        return results
 
-def main():
-    processor = EmailProcessor()
-    processor.process_emails()
+@app.get("/")
+async def root():
+    return {"message": "Email Assistant API is running"}
+
+@app.post("/process-emails")
+async def process_emails():
+    try:
+        processor = EmailProcessor()
+        results = processor.process_emails()
+        return {"status": "success", "results": results}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
-    main()
+    uvicorn.run(app, host="0.0.0.0", port=8000)

@@ -1,0 +1,21 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "email-assistant.py",
+      "use": "@vercel/python"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "email-assistant.py"
+    }
+  ],
+  "crons": [
+    {
+      "path": "/process-emails",
+      "schedule": "0 */4 * * *"
+    }
+  ]
+} 
