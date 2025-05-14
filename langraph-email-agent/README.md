@@ -7,7 +7,7 @@ keep adding users to supabase to keep reducing spams
 source venv/bin/activate && export $(cat .env | xargs) && python email-assistant.py
 
 ## to call the API
-url -X POST http://localhost:8000/process-emails
+curl -X POST http://localhost:8000/process-emails
 
 ## refresh token 
 rm -f token.pickle 
