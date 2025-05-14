@@ -192,14 +192,17 @@ class EmailProcessor:
         """Process emails using the LangGraph workflow."""
         print("DEBUG: Starting email processing workflow...")
         
-        # Run the graph
-        result = self.graph.invoke({
+        # Initialize empty state
+        initial_state = {
             "emails": [],
             "processed_emails": [],
             "current_email": None,
             "classification": None,
             "action_taken": False
-        })
+        }
+        
+        # Run the graph
+        result = self.graph.invoke(initial_state)
         
         print(f"DEBUG: Workflow completed. Processed {len(result['processed_emails'])} emails")
         return result["processed_emails"]
