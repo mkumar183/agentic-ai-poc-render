@@ -13,6 +13,8 @@ import base64
 from datetime import datetime
 from fastapi import FastAPI, HTTPException
 import uvicorn
+# from langchain_community.chat_models import ChatOllama
+from langchain_ollama import ChatOllama
 
 # Define the state
 class EmailState(TypedDict):
@@ -29,7 +31,8 @@ app = FastAPI()
 
 class EmailProcessor:
     def __init__(self):
-        self.llm = ChatOpenAI(model="gpt-3.5-turbo")
+        # self.llm = ChatOpenAI(model="gpt-3.5-turbo")
+        self.llm = ChatOpenAI(model="tinyllama")
         self.service = self._get_gmail_service()
         self.graph = self._build_graph()
     
@@ -68,7 +71,7 @@ class EmailProcessor:
             results = self.service.users().messages().list(
                 userId='me',
                 labelIds=['INBOX'],
-                maxResults=10
+                maxResults=1
             ).execute()
             messages = results.get('messages', [])
             print(f"DEBUG: Found {len(messages)} messages")
@@ -83,11 +86,23 @@ class EmailProcessor:
                 headers = msg['payload']['headers']
                 subject = next((h['value'] for h in headers if h['name'] == 'Subject'), 'No Subject')
                 sender = next((h['value'] for h in headers if h['name'] == 'From'), 'Unknown Sender')
+                print('msg:', msg)
+                
+                # Get email body
+                if 'parts' in msg['payload']:
+                    body = msg['payload']['parts'][0]['body'].get('data', '')
+                else:
+                    body = msg['payload']['body'].get('data', '')
+                
+                if body:
+                    body = base64.urlsafe_b64decode(body).decode()
+            
                 
                 emails.append({
                     'id': message['id'],
                     'subject': subject,
-                    'sender': sender
+                    'sender': sender,                    
+                    'body'  : body
                 })
             print(f"DEBUG: Processed {len(emails)} emails")
             return {"emails": emails, "processed_emails": [], "current_email": None, "classification": None, "action_taken": False}
@@ -101,7 +116,7 @@ class EmailProcessor:
             
             Subject: {email['subject']}
             From: {email['sender']}
-            
+            Body: {email['body']}
             Respond with only 'spam/marketing' or 'important'.
             """
             
@@ -110,6 +125,27 @@ class EmailProcessor:
             print(f"DEBUG: Classification result: {classification}")
             
             return {**state, "classification": classification}
+
+        # this does not work well yet classification is not good. need to improve it. TODO: improve it.
+        def classify_email_ollama(state: EmailState) -> EmailState:
+            """Classify the current email using Ollama tinylama model."""
+            print(f"DEBUG: [Ollama] Classifying email: {state['current_email']['subject']}")
+            email = state["current_email"]
+            prompt = f"""
+            Analyze this email and classify it as either 'spam/marketing' or 'important':
+            
+            Subject: {email['subject']}
+            From: {email['sender']}
+            Body: {email['body']}
+            Respond with only 'spam/marketing' or 'important'.
+            """
+            print(f"DEBUG: [Ollama] Prompt: {prompt}")
+            ollama_llm = ChatOllama(model="tinyllama")
+            response = ollama_llm.invoke([HumanMessage(content=prompt)])
+            classification = response.content.strip().lower()
+            print(f"DEBUG: [Ollama] Classification result: {classification}")
+            return {**state, "classification": classification}
+
 
         def take_action(state: EmailState) -> EmailState:
             """Take action based on classification."""
@@ -157,12 +193,14 @@ class EmailProcessor:
             print(f"DEBUG: Getting next email. Subject: {current['subject']}")
             return {**state, "emails": emails, "current_email": current}
 
+
         # Build the graph
         workflow = StateGraph(EmailState)
 
         # Add nodes
         workflow.add_node("fetch_emails", fetch_emails)
         workflow.add_node("classify_email", classify_email)
+        # workflow.add_node("classify_email", classify_email_ollama)
         workflow.add_node("take_action", take_action)
         workflow.add_node("get_next_email", get_next_email)
         workflow.add_node("should_continue", should_continue)
