@@ -40,6 +40,7 @@ factorial_function_tool = FunctionTool(
 model_client = OpenAIChatCompletionClient(
     model="gpt-4",
     api_key=os.getenv("OPENAI_API_KEY"),
+    parallel_tool_calls=False # This is important to ensure the tool calls are executed in order
 )
 
 agent = AssistantAgent(
