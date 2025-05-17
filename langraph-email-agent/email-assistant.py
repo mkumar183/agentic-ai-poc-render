@@ -13,6 +13,10 @@ import base64
 from datetime import datetime
 from fastapi import FastAPI, HTTPException
 import uvicorn
+import re
+from bs4 import BeautifulSoup
+import requests
+from urllib.parse import urlparse
 # from langchain_community.chat_models import ChatOllama
 from langchain_ollama import ChatOllama
 
@@ -245,6 +249,140 @@ class EmailProcessor:
         print(f"DEBUG: Workflow completed. Processed {len(result['processed_emails'])} emails")
         return result["processed_emails"]
 
+    def find_subscription_emails(self, max_results=100):
+        """Find emails that are likely subscriptions."""
+        print("DEBUG: Searching for subscription emails...")
+        
+        # Search for common subscription-related terms
+        query = "category:promotions OR (unsubscribe OR subscription OR newsletter OR marketing)"
+        results = self.service.users().messages().list(
+            userId='me',
+            q=query,
+            maxResults=max_results
+        ).execute()
+        
+        messages = results.get('messages', [])
+        subscription_emails = []
+        
+        for message in messages:
+            msg = self.service.users().messages().get(
+                userId='me', 
+                id=message['id']
+            ).execute()
+            
+            headers = msg['payload']['headers']
+            subject = next((h['value'] for h in headers if h['name'] == 'Subject'), 'No Subject')
+            sender = next((h['value'] for h in headers if h['name'] == 'From'), 'Unknown Sender')
+            
+            # Get email body
+            if 'parts' in msg['payload']:
+                body = msg['payload']['parts'][0]['body'].get('data', '')
+            else:
+                body = msg['payload']['body'].get('data', '')
+            
+            if body:
+                body = base64.urlsafe_b64decode(body).decode()
+            
+            # Extract unsubscribe links
+            unsubscribe_links = self._extract_unsubscribe_links(body)
+            
+            subscription_emails.append({
+                'id': message['id'],
+                'subject': subject,
+                'sender': sender,
+                'unsubscribe_links': unsubscribe_links
+            })
+        
+        return subscription_emails
+
+    def _extract_unsubscribe_links(self, html_content):
+        """Extract unsubscribe links from email content."""
+        soup = BeautifulSoup(html_content, 'html.parser')
+        unsubscribe_links = []
+        
+        # Look for common unsubscribe link patterns
+        patterns = [
+            'unsubscribe',
+            'opt-out',
+            'preferences',
+            'subscription',
+            'manage preferences',
+            'email preferences'
+        ]
+        
+        for link in soup.find_all('a'):
+            href = link.get('href', '')
+            text = link.get_text().lower()
+            
+            if any(pattern in text.lower() or pattern in href.lower() for pattern in patterns):
+                unsubscribe_links.append({
+                    'text': text,
+                    'url': href
+                })
+        
+        return unsubscribe_links
+
+    def unsubscribe_from_email(self, email_data):
+        """Attempt to unsubscribe from an email subscription."""
+        print(f"DEBUG: Attempting to unsubscribe from: {email_data['sender']}")
+        
+        for link in email_data['unsubscribe_links']:
+            try:
+                # Validate URL
+                parsed_url = urlparse(link['url'])
+                if not parsed_url.scheme or not parsed_url.netloc:
+                    print(f"DEBUG: Invalid URL: {link['url']}")
+                    continue
+                
+                # Make the unsubscribe request
+                response = requests.get(link['url'], allow_redirects=True)
+                
+                if response.status_code == 200:
+                    print(f"DEBUG: Successfully unsubscribed from {email_data['sender']}")
+                    return True
+                else:
+                    print(f"DEBUG: Failed to unsubscribe. Status code: {response.status_code}")
+            
+            except Exception as e:
+                print(f"DEBUG: Error unsubscribing: {str(e)}")
+        
+        return False
+
+    def process_subscriptions(self):
+        """Process and unsubscribe from email subscriptions."""
+        print("DEBUG: Starting subscription processing...")
+        
+        # Find subscription emails
+        subscription_emails = self.find_subscription_emails()
+        print(f"DEBUG: Found {len(subscription_emails)} potential subscription emails")
+        
+        results = []
+        for email in subscription_emails:
+            print(f"\nProcessing subscription from: {email['sender']}")
+            print(f"Subject: {email['subject']}")
+            
+            if email['unsubscribe_links']:
+                print("Found unsubscribe links:")
+                for link in email['unsubscribe_links']:
+                    print(f"- {link['text']}: {link['url']}")
+                
+                success = self.unsubscribe_from_email(email)
+                results.append({
+                    'sender': email['sender'],
+                    'subject': email['subject'],
+                    'unsubscribe_success': success
+                })
+            else:
+                print("No unsubscribe links found")
+                results.append({
+                    'sender': email['sender'],
+                    'subject': email['subject'],
+                    'unsubscribe_success': False,
+                    'reason': 'No unsubscribe links found'
+                })
+        
+        return results
+
 @app.get("/")
 async def root():
     return {"message": "Email Assistant API is running"}
@@ -259,6 +397,18 @@ async def process_emails():
         return {"status": "success", "results": results}
     except Exception as e:
         print(f"DEBUG: Error in process_emails: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/process-subscriptions")
+async def process_subscriptions():
+    try:
+        print("DEBUG: Starting /process-subscriptions endpoint")
+        processor = EmailProcessor()
+        results = processor.process_subscriptions()
+        print(f"DEBUG: Successfully processed {len(results)} subscriptions")
+        return {"status": "success", "results": results}
+    except Exception as e:
+        print(f"DEBUG: Error in process_subscriptions: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
