@@ -1,0 +1,1 @@
+playwright install chromium # uninstalled and installed it. 

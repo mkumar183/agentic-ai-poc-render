@@ -4,3 +4,4 @@ python-dotenv
 openai
 supabase
 playwright==1.42.0
+google-generativeai
