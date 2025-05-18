@@ -20,6 +20,7 @@ class Task:
     name: str
     description: str
     is_stream: bool = False
+    external_termination: bool = False
 
 def print_messages(messages: List[TextMessage]):
     """Print messages in a nicely formatted way."""
@@ -63,7 +64,8 @@ def create_agents(model_client: OpenAIChatCompletionClient) -> Tuple[AssistantAg
 def create_team(primary_agent: AssistantAgent, critic_agent: AssistantAgent) -> RoundRobinGroupChat:
     """Create and return a team with the given agents."""
     text_termination = TextMentionTermination("APPROVE")
-    return RoundRobinGroupChat([primary_agent, critic_agent], termination_condition=text_termination)
+    external_termination = ExternalTermination()
+    return RoundRobinGroupChat([primary_agent, critic_agent], termination_condition=external_termination | text_termination)
 
 async def run_task(team: RoundRobinGroupChat, task: Task) -> Any:
     """Run a single task with the team."""
@@ -71,12 +73,30 @@ async def run_task(team: RoundRobinGroupChat, task: Task) -> Any:
     await team.reset()  # Reset the team for a new task
     
     if task.is_stream:
-        async for message in team.run_stream(task=task.description):  # type: ignore
-            if isinstance(message, TaskResult):
-                print("Stop Reason:", message.stop_reason)
-            else:            
-                print_messages([message])
-        return None
+        if task.external_termination:
+            # Create external termination condition for this task
+            external_termination = ExternalTermination()            
+            
+            # Run the team in a background task
+            run = asyncio.create_task(Console(team.run_stream(task=task.description)))
+            
+            # Wait for some time
+            await asyncio.sleep(5)  # Wait for 5 seconds
+            
+            # Stop the team
+            print("\n=== External Termination Triggered ===")
+            external_termination.set()
+            
+            # Wait for the team to finish
+            await run
+            return None
+        else:
+            async for message in team.run_stream(task=task.description):  # type: ignore
+                if isinstance(message, TaskResult):
+                    print("Stop Reason:", message.stop_reason)
+                else:            
+                    print_messages([message])
+            return None
     else:
         result = await team.run(task=task.description)
         print_messages(result.messages)
@@ -95,21 +115,15 @@ async def main():
     # Define tasks
     tasks = [
         # Task(
-        #     name="Poem Task",
-        #     description="Write a short poem about the fall season."
-        # ),
-        # Task(
-        #     name="Story Task",
-        #     description="Write a short story about a magical forest."
-        # ),
-        # Task(
-        #     name="Analysis Task",
-        #     description="Analyze the impact of artificial intelligence on modern education."
+        #     name="Streaming Poem Task",
+        #     description="Write a short poem about the fall season.",
+        #     is_stream=True
         # ),
         Task(
-            name="Streaming Poem Task",
-            description="Write a short poem about the fall season.",
-            is_stream=True
+            name="Externally Terminated Task",
+            description="Write a detailed analysis of climate change impacts. This will be a long response that we'll terminate externally.",
+            is_stream=True,
+            external_termination=True
         )
     ]
     
