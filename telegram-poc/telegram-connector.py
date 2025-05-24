@@ -5,6 +5,8 @@ from dotenv import load_dotenv
 import requests
 import json
 from datetime import datetime
+from http.server import BaseHTTPRequestHandler
+from typing import Dict, Any
 
 load_dotenv()
 
@@ -77,10 +79,45 @@ async def send_telegram_message(message_text: str):
         # Send the message
         await bot.send_message(chat_id=CHAT_ID, text=message_text)
         print(f"Message successfully sent to chat ID {CHAT_ID}: '{message_text}'")
+        return True
     except Exception as e:
         print(f"Error sending message: {e}")
+        return False
 
-# --- Example Usage ---
+class Handler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        """Handle GET requests"""
+        try:
+            # Get the spiritual quote
+            quote_data = get_spiritual_quote()
+            
+            if quote_data:
+                date, topic, quote, author, source = quote_data
+                formatted_message = format_quote_message(date, topic, quote, author, source)
+                
+                # Send the formatted quote
+                success = asyncio.run(send_telegram_message(formatted_message))
+                
+                if success:
+                    self.send_response(200)
+                    self.send_header('Content-type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(json.dumps({
+                        'status': 'success',
+                        'message': 'Quote sent successfully'
+                    }).encode())
+                else:
+                    self.send_error(500, 'Failed to send message')
+            else:
+                self.send_error(404, 'No quote found for today')
+                
+        except Exception as e:
+            self.send_error(500, str(e))
+
+# Create handler instance for Vercel
+handler = Handler
+
+# For local testing
 if __name__ == "__main__":
     # Get the spiritual quote
     quote_data = get_spiritual_quote()
