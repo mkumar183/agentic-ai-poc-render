@@ -2,6 +2,8 @@ python-telegram-bot==20.7
 python-dotenv==1.0.0
 requests==2.31.0
 beautifulsoup4==4.12.2
+fastapi==0.109.2
+uvicorn==0.27.1
 certifi==2025.4.26
 charset-normalizer==3.4.2
 h11==0.16.0

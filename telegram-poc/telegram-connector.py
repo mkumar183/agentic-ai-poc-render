@@ -5,8 +5,8 @@ from dotenv import load_dotenv
 import requests
 import json
 from datetime import datetime
-from http.server import BaseHTTPRequestHandler
-from typing import Dict, Any
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import JSONResponse
 
 load_dotenv()
 
@@ -18,6 +18,9 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 # Replace with your actual chat ID obtained from @userinfobot
 # It can be a positive number for a user, or a negative number for a group.
 CHAT_ID = os.getenv("CHAT_ID")
+
+# Initialize FastAPI app
+app = FastAPI()
 
 def get_spiritual_quote():
     """
@@ -84,49 +87,37 @@ async def send_telegram_message(message_text: str):
         print(f"Error sending message: {e}")
         return False
 
-class Handler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        """Handle GET requests"""
-        try:
-            # Get the spiritual quote
-            quote_data = get_spiritual_quote()
+@app.get("/api/telegram-connector")
+async def send_quote():
+    """API endpoint to send the daily quote"""
+    try:
+        # Get the spiritual quote
+        quote_data = get_spiritual_quote()
+        
+        if quote_data:
+            date, topic, quote, author, source = quote_data
+            formatted_message = format_quote_message(date, topic, quote, author, source)
             
-            if quote_data:
-                date, topic, quote, author, source = quote_data
-                formatted_message = format_quote_message(date, topic, quote, author, source)
-                
-                # Send the formatted quote
-                success = asyncio.run(send_telegram_message(formatted_message))
-                
-                if success:
-                    self.send_response(200)
-                    self.send_header('Content-type', 'application/json')
-                    self.end_headers()
-                    self.wfile.write(json.dumps({
+            # Send the formatted quote
+            success = await send_telegram_message(formatted_message)
+            
+            if success:
+                return JSONResponse(
+                    status_code=200,
+                    content={
                         'status': 'success',
                         'message': 'Quote sent successfully'
-                    }).encode())
-                else:
-                    self.send_error(500, 'Failed to send message')
+                    }
+                )
             else:
-                self.send_error(404, 'No quote found for today')
-                
-        except Exception as e:
-            self.send_error(500, str(e))
-
-# Create handler instance for Vercel
-handler = Handler
+                raise HTTPException(status_code=500, detail="Failed to send message")
+        else:
+            raise HTTPException(status_code=404, detail="No quote found for today")
+            
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 # For local testing
 if __name__ == "__main__":
-    # Get the spiritual quote
-    quote_data = get_spiritual_quote()
-    
-    if quote_data:
-        date, topic, quote, author, source = quote_data
-        formatted_message = format_quote_message(date, topic, quote, author, source)
-        
-        # Send the formatted quote
-        asyncio.run(send_telegram_message(formatted_message))
-    else:
-        print("Failed to fetch the spiritual quote")
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
