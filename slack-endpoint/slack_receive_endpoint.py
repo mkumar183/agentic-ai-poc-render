@@ -26,6 +26,12 @@ async def receive_slack_message(request: Request):
         # Get the request body
         data = await request.json()
         
+        # Handle URL verification challenge
+        if data.get("type") == "url_verification":
+            challenge = data.get("challenge")
+            logger.info(f"Received URL verification challenge: {challenge}")
+            return JSONResponse(content={"challenge": challenge})
+        
         # Extract message details
         text = data.get("text", "")
         channel = data.get("channel", "")
