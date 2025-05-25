@@ -25,6 +25,7 @@ async def receive_slack_message(request: Request):
     try:
         # Get the request body
         data = await request.json()
+        # logger.info(f"Received message: {data}")
         
         # Handle URL verification challenge
         if data.get("type") == "url_verification":
@@ -32,20 +33,32 @@ async def receive_slack_message(request: Request):
             logger.info(f"Received URL verification challenge: {challenge}")
             return JSONResponse(content={"challenge": challenge})
         
-        # Extract message details
-        text = data.get("text", "")
-        channel = data.get("channel", "")
-        user = data.get("user", "")
+        # Handle event callback
+        if data.get("type") == "event_callback":
+            event = data.get("event", {})
+            
+            # Extract message details from the event
+            text = event.get("text", "")
+            channel = event.get("channel", "")
+            user = event.get("user", "")
+            channel_type = event.get("channel_type", "")
+            ts = event.get("ts", "")
+            
+            # Log the received message
+            logger.info(f"Received message from {user} in {channel_type} channel {channel} at {ts}: {text}")
+            
+            # Return a success response
+            return JSONResponse(content={
+                "status": "success",
+                "message": "Message received"
+            })
         
-        # Log the received message
-        logger.info(f"Received message: {data}")
-        logger.info(f"Received message from {user} in channel {channel}: {text}")
-        
-        # Return a success response
+        # Return a default response for other events
         return JSONResponse(content={
-            "status": "success",
-            "message": "Message received"
+            "status": "received",
+            "message": "Event received but not processed"
         })
+        
     except Exception as e:
         logger.error(f"Error processing message: {str(e)}")
         return JSONResponse(
