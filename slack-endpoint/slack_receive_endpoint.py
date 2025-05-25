@@ -16,12 +16,15 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI()
 
+@app.get("/")
+async def root():
+    return {"message": "Slack endpoint is running"}
+
 @app.post("/slack/message")
 async def receive_slack_message(request: Request):
     try:
         # Get the request body
         data = await request.json()
-        print(f"Received message: {data}")
         
         # Extract message details
         text = data.get("text", "")

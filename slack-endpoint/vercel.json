@@ -8,6 +8,10 @@
     ],
     "routes": [
         {
+            "src": "/slack/message",
+            "dest": "slack_receive_endpoint.py"
+        },
+        {
             "src": "/(.*)",
             "dest": "slack_receive_endpoint.py"
         }
