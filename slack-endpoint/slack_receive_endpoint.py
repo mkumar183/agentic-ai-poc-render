@@ -38,6 +38,7 @@ async def receive_slack_message(request: Request):
         user = data.get("user", "")
         
         # Log the received message
+        logger.info(f"Received message: {data}")
         logger.info(f"Received message from {user} in channel {channel}: {text}")
         
         # Return a success response
