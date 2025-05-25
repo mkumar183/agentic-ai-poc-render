@@ -34,6 +34,7 @@ def get_spiritual_quote():
         
         # Parse the JSON data
         data = response.json()
+        # print(data)
         
         # Get current month and day
         current_date = datetime.now()
