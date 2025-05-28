@@ -45,6 +45,7 @@ env/
 *.log 
 api_calls.json
 logged_in_page.png
+airtable-agent/airtable_tokens.json
 
 # New line
 langraph-email-agent/credentials.json
