@@ -46,6 +46,9 @@ python get_tokens.py
    - Ask you to log into Airtable
    - Request permission to access your bases
    - Save the tokens to `airtable_tokens.json`
+    - This token file can be used on any machine. So it can be generated at one machine and then passed on. 
+    - so this is the step that client need to do one time. refresh token part of this will be used to generate new token on expiry
+
 
 ### 4. Using the Agent
 

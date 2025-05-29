@@ -35,10 +35,10 @@ def main():
         base_id = get_base_id_by_name(bases, "Nuragi")
         print(f"\nFound base ID for Nuragi: {base_id}")
         
-        # List leads in the base
-        print(f"\nListing leads in base {base_id}...")
-        leads = agent.list_leads(base_id)
-        print("Leads:", leads)
+        # List requisitions in the base
+        print(f"\nListing requisitions in base {base_id}...")
+        requisitions = agent.list_requisitions(base_id)
+        print("Requisitions:", requisitions)
 
     except Exception as e:
         print(f"Error: {str(e)}")
