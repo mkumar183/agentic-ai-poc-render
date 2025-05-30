@@ -2,6 +2,7 @@ from arcadepy import Arcade
 import os
 from dotenv import load_dotenv
 from typing import Optional
+import httpx
 
 def init_arcade_client(api_key: Optional[str] = None) -> Arcade:
     """
@@ -25,4 +26,13 @@ def init_arcade_client(api_key: Optional[str] = None) -> Arcade:
     if not arcade_api_key:
         raise ValueError("No API key provided. Set ARCADE_API_KEY environment variable or provide api_key parameter.")
     
-    return Arcade(api_key=arcade_api_key) 
+    # Create a custom httpx client without proxies
+    http_client = httpx.Client(
+        timeout=30.0,
+        verify=True
+    )
+    
+    return Arcade(
+        api_key=arcade_api_key,
+        http_client=http_client
+    ) 
